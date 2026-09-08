@@ -210,4 +210,3 @@ pyrightconfig.json
 # End of https://www.toptal.com/developers/gitignore/api/python,macos
 *.bak
 test*.py
-source*.py

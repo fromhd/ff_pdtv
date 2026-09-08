@@ -5,16 +5,7 @@ from flask import Response
 from .setup import *
 from .model import ModelPanliveItem
 
-try:
-    if os.path.exists(os.path.join(os.path.dirname(__file__), "source_pdtv_handler.py")):
-        from .source_pdtv_handler import PDTV_Handler
-
-    else:
-        from support import SupportSC
-
-        PDTV_Handler = SupportSC.load_module_f(__file__, "source_pdtv_handler").PDTV_Handler
-except:
-    pass
+from .source_pdtv_handler import PDTV_Handler
 
 
 class ModuleMain(PluginModuleBase):
@@ -67,10 +58,17 @@ class ModuleMain(PluginModuleBase):
             if streaming_type == "redirect":
                 token = self.token_refresh()
                 url = PDTV_Handler.play_url(url, token, self.web_list_model)
-            ret = {"ret": "success", "data": url}
+            if url:
+                ret = {"ret": "success", "data": url}
+            else:
+                err_msg = getattr(PDTV_Handler, "LAST_ERROR", None) or "스트림 주소를 가져오지 못했습니다."
+                ret = {"ret": "error", "data": None, "msg": err_msg}
         elif command == "login_check":
             data = self.token_refresh(force=True)
-            ret = {"ret": "success", "json": data}
+            if data:
+                ret = {"ret": "success", "json": data}
+            else:
+                ret = {"ret": "warning", "json": "로그인 실패 (아이디/비밀번호 또는 프록시 설정을 확인하세요)"}
         elif command == "token_delete":
             P.ModelSetting.set("token", "")
             P.ModelSetting.set("token_time", "")
