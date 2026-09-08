@@ -6,6 +6,7 @@ FlaskFarm (SJVA) Plugin for PandaTV (팬더TV)
 
 ## 저장소 (Repository)
 - GitHub: [https://github.com/fromhd/ff_pdtv](https://github.com/fromhd/ff_pdtv)
+- 원출처 (Original Repository): [https://github.com/ssagajikorea/ff_pdtv](https://github.com/ssagajikorea/ff_pdtv) (by ssagajikorea)
 
 ## 주요 기능
 - 최신 PandaTV REST API 연동
