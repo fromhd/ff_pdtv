@@ -64,11 +64,24 @@ class ModuleMain(PluginModuleBase):
                 err_msg = getattr(PDTV_Handler, "LAST_ERROR", None) or "스트림 주소를 가져오지 못했습니다."
                 ret = {"ret": "error", "data": None, "msg": err_msg}
         elif command == "login_check":
-            data = self.token_refresh(force=True)
-            if data:
-                ret = {"ret": "success", "json": data}
+            current_token = P.ModelSetting.get("token")
+            user_info = None
+            if current_token:
+                user_info = PDTV_Handler.check_token(current_token)
+            if user_info:
+                nick = user_info.get("nick") or user_info.get("id") or "사용자"
+                is_adult = "성인인증 완료" if user_info.get("isAdult") else "성인 미인증"
+                ret = {"ret": "success", "json": f"로그인 성공: {nick} ({is_adult})"}
             else:
-                ret = {"ret": "warning", "json": "로그인 실패 (아이디/비밀번호 또는 프록시 설정을 확인하세요)"}
+                data = self.token_refresh(force=True)
+                if data:
+                    user_info = PDTV_Handler.check_token(data)
+                    nick = user_info.get("nick") if user_info else P.ModelSetting.get("username")
+                    is_adult = " (성인인증 완료)" if (user_info and user_info.get("isAdult")) else ""
+                    ret = {"ret": "success", "json": f"로그인 성공: {nick}{is_adult}"}
+                else:
+                    err_msg = getattr(PDTV_Handler, "LAST_ERROR", None) or "로그인 실패 (아이디/비밀번호 또는 프록시 설정을 확인하세요)"
+                    ret = {"ret": "warning", "json": err_msg}
         elif command == "token_delete":
             P.ModelSetting.set("token", "")
             P.ModelSetting.set("token_time", "")
@@ -113,17 +126,24 @@ class ModuleMain(PluginModuleBase):
         if flag == False and P.ModelSetting.get("token") == "":
             flag = True
         if flag == False:
-            last_time_str = P.ModelSetting.get("token_time")
-            if last_time_str == "":
-                flag = True
-            else:
-                last_time = datetime.strptime(last_time_str, form)
-                if last_time + timedelta(hours=P.ModelSetting.get_int("token_refresh_hour")) < datetime.now():
+            refresh_hour = P.ModelSetting.get_int("token_refresh_hour")
+            if refresh_hour > 0:
+                last_time_str = P.ModelSetting.get("token_time")
+                if last_time_str == "":
                     flag = True
+                else:
+                    last_time = datetime.strptime(last_time_str, form)
+                    if last_time + timedelta(hours=refresh_hour) < datetime.now():
+                        flag = True
         if flag:
             data = PDTV_Handler.login(P.ModelSetting.get("username"), P.ModelSetting.get("password"))
             if data:
                 P.ModelSetting.set("token", data)
                 P.ModelSetting.set("token_time", datetime.now().strftime(form))
-            return data
+                return data
+            current_token = P.ModelSetting.get("token")
+            if current_token and PDTV_Handler.check_token(current_token):
+                P.logger.info("[ff_pdtv] 자동 로그인 실패했으나 기존 토큰이 여전히 유효합니다. 기존 토큰을 유지합니다.")
+                return current_token
+            return current_token if current_token else None
         return P.ModelSetting.get("token")

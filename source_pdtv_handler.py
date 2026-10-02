@@ -120,8 +120,30 @@ class PDTV_Handler:
         return True
 
     @classmethod
+    def check_token(cls, token):
+        if not token:
+            return None
+        proxies = cls.get_proxies(use_proxy2=False)
+        url = "https://api.pandalive.co.kr/v1/member/login_info"
+        headers = {
+            "cookie": token,
+            "x-device-info": cls.get_device_info(token),
+        }
+        try:
+            response = cls.call_request("POST", url, headers=headers, proxies=proxies)
+            if response and response.status_code == 200:
+                data = response.json()
+                user_info = data.get("loginInfo", {}).get("userInfo", {})
+                if user_info.get("isLogin"):
+                    return user_info
+        except Exception as e:
+            P.logger.error(f"[ff_pdtv] check_token exception: {str(e)}")
+        return None
+
+    @classmethod
     def login(cls, username, password):
         if not username or not password:
+            cls.LAST_ERROR = "아이디와 비밀번호를 입력해주세요."
             return None
 
         proxies = cls.get_proxies(use_proxy2=False)
@@ -139,19 +161,45 @@ class PDTV_Handler:
             if not response or response.status_code != 200:
                 if response:
                     P.logger.error(f"[ff_pdtv] Login HTTP error {response.status_code}: {response.text}")
+                    try:
+                        err_json = response.json()
+                        err_code = err_json.get("errorData", {}).get("code")
+                        if err_code == "recaptcha":
+                            cls.LAST_ERROR = "팬더TV에서 캡차(reCAPTCHA) 인증을 요구합니다. 웹 브라우저 로그인 후 토큰(쿠키)을 설정에 직접 등록해주세요."
+                        elif err_code == "nopw":
+                            cls.LAST_ERROR = "비밀번호가 일치하지 않습니다. 다시 입력해주세요."
+                        elif err_code == "noid":
+                            cls.LAST_ERROR = "존재하지 않는 사용자입니다."
+                        else:
+                            cls.LAST_ERROR = err_json.get("message") or f"로그인 에러 ({err_code})"
+                    except Exception:
+                        cls.LAST_ERROR = f"로그인 HTTP 에러 ({response.status_code})"
+                else:
+                    cls.LAST_ERROR = "팬더TV 서버 응답이 없습니다. (프록시 확인 필요)"
                 return None
             res_json = response.json()
             if not res_json.get("result"):
-                P.logger.error(f"[ff_pdtv] Login failed: {res_json.get('message')} (errorData: {res_json.get('errorData')})")
+                err_code = res_json.get("errorData", {}).get("code")
+                msg = res_json.get("message")
+                P.logger.error(f"[ff_pdtv] Login failed: {msg} (errorData: {res_json.get('errorData')})")
+                if err_code == "recaptcha":
+                    cls.LAST_ERROR = "팬더TV에서 캡차(reCAPTCHA) 인증을 요구합니다. 웹 브라우저 로그인 후 토큰(쿠키)을 설정에 직접 등록해주세요."
+                elif err_code == "nopw":
+                    cls.LAST_ERROR = "비밀번호가 일치하지 않습니다. 다시 입력해주세요."
+                else:
+                    cls.LAST_ERROR = msg or f"로그인 실패 ({err_code})"
                 return None
             cookies = response.cookies.get_dict()
             if not cookies or "userLoginYN" not in cookies:
                 P.logger.error(f"[ff_pdtv] userLoginYN not in login response cookies: {cookies}")
+                cls.LAST_ERROR = "로그인 쿠키에 userLoginYN이 없습니다."
                 return None
             token = "; ".join([f"{k}={v}" for k, v in cookies.items()])
             P.logger.info(f"[ff_pdtv] Login successful for {username}")
+            cls.LAST_ERROR = None
             return token
         except Exception as e:
+            cls.LAST_ERROR = f"로그인 예외 발생: {str(e)}"
             P.logger.error(f"Exception:{str(e)}")
             P.logger.error(traceback.format_exc())
             return None
